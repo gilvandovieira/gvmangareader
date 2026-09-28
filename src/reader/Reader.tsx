@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Cbz } from '../cbz/cbz';
 import { FIT_MODES, READING_DIRECTIONS, type FitMode, type ReadingDirection } from '../model/manga';
 import { loadPreferences, savePreferences } from '../storage/preferences';
+import { loadProgress, saveProgress } from '../storage/progress';
 import { usePageUrl } from './usePageUrl';
 
 const DIRECTION_LABELS: Record<ReadingDirection, string> = { rtl: 'RTL', ltr: 'LTR' };
@@ -27,16 +28,17 @@ type Props = {
 };
 
 export function Reader({ cbz: { manga, zip }, actions }: Props) {
-  const [index, setIndex] = useState(0);
+  const total = manga.pages.length;
+  const [index, setIndex] = useState(() => loadProgress(manga.id, total));
   const [preferences, setPreferences] = useState(loadPreferences);
   const { direction, fitMode } = preferences;
-  const total = manga.pages.length;
   const page = manga.pages[index];
   const { url, error } = usePageUrl(zip, page);
   const [undecodableUrl, setUndecodableUrl] = useState<string>();
   const viewport = useRef<HTMLDivElement>(null);
 
   useEffect(() => savePreferences(preferences), [preferences]);
+  useEffect(() => saveProgress(manga.id, index), [manga.id, index]);
 
   useEffect(() => {
     viewport.current?.scrollTo(0, 0);

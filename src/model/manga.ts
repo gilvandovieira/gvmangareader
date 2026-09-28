@@ -5,6 +5,8 @@ export type Page = {
 };
 
 export type Manga = {
+  /** Stable identity of the source file, used as the reading-progress key. */
+  id: string;
   title: string;
   pages: Page[];
 };

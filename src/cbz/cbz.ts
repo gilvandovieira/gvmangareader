@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import type { Manga, Page } from '../model/manga';
+import { bookId } from '../storage/progress';
 
 const IMAGE_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
@@ -44,7 +45,7 @@ export async function openCbz(file: File): Promise<Cbz> {
 
   const pages: Page[] = paths.map((path, index) => ({ index, path }));
   const title = file.name.replace(/\.cbz$/i, '');
-  return { manga: { title, pages }, zip };
+  return { manga: { id: bookId(file), title, pages }, zip };
 }
 
 export async function readPage(zip: JSZip, page: Page): Promise<Blob> {
