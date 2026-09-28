@@ -10,7 +10,7 @@ async function openFixture(page: Page) {
 /** Waits until page `n` is fully shown and returns the MIME type of the Blob behind the `<img>`. */
 async function expectShown(page: Page, n: number): Promise<string> {
   await expect(page.getByText(`${n} / 5`)).toBeVisible();
-  await expect(page.locator('[aria-busy=false]')).toBeVisible();
+  await expect(page.locator('[aria-busy=true]')).toHaveCount(0);
   const image = page.getByRole('img', { name: `Page ${n}` });
   await expect.poll(() => image.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth)).toBe(300);
   return image.evaluate(async (el: HTMLImageElement) => (await (await fetch(el.src)).blob()).type);
@@ -109,5 +109,73 @@ test.describe('reading progress', () => {
     await expectShown(page, 1);
     await page.getByRole('button', { name: 'Next page' }).click();
     await expectShown(page, 2);
+  });
+});
+
+test.describe('double-page mode', () => {
+  /** Names of the page images on screen, from left to right, once all have loaded. */
+  async function shownLeftToRight(page: Page): Promise<string[]> {
+    await expect(page.locator('[aria-busy=true]')).toHaveCount(0);
+    const images = await page.getByRole('img', { name: /^Page \d+$/ }).all();
+    const placed = await Promise.all(
+      images.map(async (image) => ({ name: await image.getAttribute('alt'), x: (await image.boundingBox())!.x })),
+    );
+    return placed.sort((a, b) => a.x - b.x).map(({ name }) => name!);
+  }
+
+  test('shows page 1 alone, then pairs, in reading-direction order', async ({ page }) => {
+    const next = page.getByRole('button', { name: 'Next page' });
+    const previous = page.getByRole('button', { name: 'Previous page' });
+    await openFixture(page);
+    await page.getByRole('button', { name: 'Double' }).click();
+
+    await expect(page.getByText('1 / 5')).toBeVisible();
+    expect(await shownLeftToRight(page)).toEqual(['Page 1']);
+
+    await next.click();
+    await expect(page.getByText('2–3 / 5')).toBeVisible();
+    expect(await shownLeftToRight(page)).toEqual(['Page 3', 'Page 2']);
+    // The two pages meet at the spine: each is pushed toward the other.
+    const positions = await page
+      .getByRole('img', { name: /^Page \d+$/ })
+      .evaluateAll((images) => images.map((image) => getComputedStyle(image).objectPosition));
+    expect(positions).toEqual(['100% 50%', '0% 50%']);
+
+    await next.click();
+    await expect(page.getByText('4–5 / 5')).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText(/page 4/i);
+    expect(await shownLeftToRight(page)).toEqual(['Page 5']);
+    await expect(next).toBeDisabled();
+
+    await page.getByRole('button', { name: 'LTR' }).click();
+    await previous.click();
+    await expect(page.getByText('2–3 / 5')).toBeVisible();
+    expect(await shownLeftToRight(page)).toEqual(['Page 2', 'Page 3']);
+    await previous.click();
+    await expect(page.getByText('1 / 5')).toBeVisible();
+  });
+
+  test('pairs page 1 with page 2 when the cover is paired', async ({ page }) => {
+    await openFixture(page);
+    await page.getByRole('button', { name: 'Double' }).click();
+    await page.getByRole('button', { name: 'Cover paired' }).click();
+    await expect(page.getByText('1–2 / 5')).toBeVisible();
+    await page.getByRole('button', { name: 'Next page' }).click();
+    await expect(page.getByText('3–4 / 5')).toBeVisible();
+  });
+
+  test('remembers the layout and resumes at the same spread', async ({ page }) => {
+    await openFixture(page);
+    await page.getByRole('button', { name: 'LTR' }).click();
+    await page.getByRole('button', { name: 'Double' }).click();
+    await page.getByRole('button', { name: 'Next page' }).click();
+    await page.getByRole('button', { name: 'Next page' }).click();
+    await expect(page.getByText('4–5 / 5')).toBeVisible();
+
+    await openFixture(page);
+    await expect(page.getByText('4–5 / 5')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Double' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'LTR' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Cover alone' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

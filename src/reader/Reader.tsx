@@ -1,20 +1,27 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { Cbz } from '../cbz/cbz';
-import { FIT_MODES, READING_DIRECTIONS, type FitMode, type ReadingDirection } from '../model/manga';
+import {
+  FIT_MODES,
+  READING_DIRECTIONS,
+  READING_MODES,
+  SPREAD_STARTS,
+  type FitMode,
+  type ReadingDirection,
+  type ReadingMode,
+  type SpreadStart,
+} from '../model/manga';
 import { loadPreferences, savePreferences } from '../storage/preferences';
 import { loadProgress, saveProgress } from '../storage/progress';
-import { usePageUrl } from './usePageUrl';
+import { PageView } from './PageView';
+import { leftToRight, spreadAt, stepSpread } from './spreads';
 
 const DIRECTION_LABELS: Record<ReadingDirection, string> = { rtl: 'RTL', ltr: 'LTR' };
+const MODE_LABELS: Record<ReadingMode, string> = { single: 'Single', double: 'Double' };
+const SPREAD_START_LABELS: Record<SpreadStart, string> = { 'first-alone': 'Cover alone', paired: 'Cover paired' };
 const FIT_LABELS: Record<FitMode, string> = {
   contain: 'Contain',
   'fit-width': 'Width',
   'fit-height': 'Height',
-};
-const IMAGE_CLASSES: Record<FitMode, string> = {
-  contain: 'h-full w-full object-contain',
-  'fit-width': 'w-full',
-  'fit-height': 'h-full w-auto max-w-none shrink-0',
 };
 
 const buttonClass =
@@ -29,28 +36,22 @@ type Props = {
 
 export function Reader({ cbz: { manga, zip }, actions }: Props) {
   const total = manga.pages.length;
+  /** A page of the current spread; the spread itself is derived from it and the layout. */
   const [index, setIndex] = useState(() => loadProgress(manga.id, total));
   const [preferences, setPreferences] = useState(loadPreferences);
-  const { direction, fitMode } = preferences;
-  const page = manga.pages[index];
-  const { url, error, loading } = usePageUrl(zip, page);
-  const [undecodableUrl, setUndecodableUrl] = useState<string>();
-  const viewport = useRef<HTMLDivElement>(null);
+  const { direction, fitMode, readingMode, spreadStart } = preferences;
+  const spread = spreadAt(index, total, { mode: readingMode, start: spreadStart });
 
   useEffect(() => savePreferences(preferences), [preferences]);
   useEffect(() => saveProgress(manga.id, index), [manga.id, index]);
-
-  useEffect(() => {
-    viewport.current?.scrollTo(0, 0);
-  }, [url]);
 
   /** Turns the page toward a physical side, so ← always means "the page on the left". */
   const turn = useCallback(
     (side: 'left' | 'right') => {
       const forward = (side === 'right') === (direction === 'ltr');
-      setIndex((i) => Math.min(Math.max(i + (forward ? 1 : -1), 0), total - 1));
+      setIndex((i) => stepSpread(i, forward, total, { mode: readingMode, start: spreadStart }));
     },
-    [direction, total],
+    [direction, total, readingMode, spreadStart],
   );
 
   useEffect(() => {
@@ -65,8 +66,8 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [turn]);
 
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
+  const isFirst = spread[0] === 0;
+  const isLast = spread[spread.length - 1] === total - 1;
   const leftIsNext = direction === 'rtl';
 
   return (
@@ -87,8 +88,8 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
           >
             ←
           </button>
-          <span className="min-w-16 text-center text-sm tabular-nums" aria-live="polite">
-            {index + 1} / {total}
+          <span className="min-w-24 text-center text-sm tabular-nums" aria-live="polite">
+            {spread.map((i) => i + 1).join('–')} / {total}
           </span>
           <button
             type="button"
@@ -109,6 +110,22 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
           onChange={(value) => setPreferences((p) => ({ ...p, direction: value }))}
         />
         <ToggleGroup
+          label="Page layout"
+          options={READING_MODES}
+          labels={MODE_LABELS}
+          value={readingMode}
+          onChange={(value) => setPreferences((p) => ({ ...p, readingMode: value }))}
+        />
+        {readingMode === 'double' && (
+          <ToggleGroup
+            label="First page"
+            options={SPREAD_STARTS}
+            labels={SPREAD_START_LABELS}
+            value={spreadStart}
+            onChange={(value) => setPreferences((p) => ({ ...p, spreadStart: value }))}
+          />
+        )}
+        <ToggleGroup
           label="Fit mode"
           options={FIT_MODES}
           labels={FIT_LABELS}
@@ -117,28 +134,12 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
         />
       </header>
 
-      <div ref={viewport} className="flex min-h-0 flex-1 overflow-auto" aria-busy={loading}>
-        {error ? (
-          <p className="m-auto text-sm text-red-400" role="alert">
-            Could not load page {index + 1}: {error}
-          </p>
-        ) : url && url === undecodableUrl ? (
-          <p className="m-auto max-w-sm px-4 text-center text-sm text-red-400" role="alert">
-            Page {index + 1} could not be displayed. This browser may not support its image format (
-            {page.path.slice(page.path.lastIndexOf('.'))}).
-          </p>
-        ) : url ? (
-          <img
-            src={url}
-            alt={`Page ${index + 1}`}
-            // While the next page is decoding, dim the previous one (after a delay, so fast turns don't flicker).
-            className={`m-auto transition-opacity ${IMAGE_CLASSES[fitMode]} ${loading ? 'opacity-40 delay-200' : ''}`}
-            onError={() => setUndecodableUrl(url)}
-          />
-        ) : (
-          <p className="m-auto text-sm text-neutral-500">Loading…</p>
-        )}
-      </div>
+      <PageView
+        zip={zip}
+        pages={leftToRight(spread, direction).map((i) => manga.pages[i])}
+        fitMode={fitMode}
+        direction={direction}
+      />
     </div>
   );
 }
