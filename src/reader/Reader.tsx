@@ -33,7 +33,7 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
   const [preferences, setPreferences] = useState(loadPreferences);
   const { direction, fitMode } = preferences;
   const page = manga.pages[index];
-  const { url, error } = usePageUrl(zip, page);
+  const { url, error, loading } = usePageUrl(zip, page);
   const [undecodableUrl, setUndecodableUrl] = useState<string>();
   const viewport = useRef<HTMLDivElement>(null);
 
@@ -117,7 +117,7 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
         />
       </header>
 
-      <div ref={viewport} className="flex min-h-0 flex-1 overflow-auto">
+      <div ref={viewport} className="flex min-h-0 flex-1 overflow-auto" aria-busy={loading}>
         {error ? (
           <p className="m-auto text-sm text-red-400" role="alert">
             Could not load page {index + 1}: {error}
@@ -131,7 +131,8 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
           <img
             src={url}
             alt={`Page ${index + 1}`}
-            className={`m-auto ${IMAGE_CLASSES[fitMode]}`}
+            // While the next page is decoding, dim the previous one (after a delay, so fast turns don't flicker).
+            className={`m-auto transition-opacity ${IMAGE_CLASSES[fitMode]} ${loading ? 'opacity-40 delay-200' : ''}`}
             onError={() => setUndecodableUrl(url)}
           />
         ) : (
