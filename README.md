@@ -11,9 +11,11 @@ A manga reader for `.cbz` files that runs entirely in your browser. There is no 
 - Pages are ordered with natural sort (`page2` comes before `page10`).
 - Right-to-left (manga) or left-to-right reading direction.
 - Fit modes: **Contain** (whole page), **Width** and **Height**.
-- Keyboard navigation with <kbd>←</kbd> and <kbd>→</kbd>.
-- Page counter (`page / total`).
-- Reading direction and fit mode are remembered in the browser (`localStorage`).
+- **Single** or **Double** page layout. Double shows two-page spreads with no gap, so artwork across the spine lines up; page 1 is shown alone (**Cover alone**, like a printed book) or paired with page 2 (**Cover paired**).
+- A thumbnail sidebar to see where you are and jump to any page. It can be collapsed and docked left or right. Thumbnails are made only for pages near the visible part of the list.
+- Keyboard navigation with <kbd>←</kbd> and <kbd>→</kbd>, one page or one spread at a time.
+- Page counter (`page / total`, or `first–second / total` for a spread).
+- Reading direction, fit mode, page layout and the sidebar's state are remembered in the browser (`localStorage`).
 - Each book reopens at the page where you left off.
 - JPEG XL pages work in every browser: natively where supported, otherwise through a WebAssembly decoder.
 
@@ -21,9 +23,9 @@ A manga reader for `.cbz` files that runs entirely in your browser. There is no 
 
 1. Open the [live app](https://gilvandovieira.github.io/gvmangareader/) or run it locally (see below).
 2. Click **Open CBZ** and choose a file.
-3. Turn pages with the arrow buttons in the toolbar or the arrow keys.
+3. Turn pages with the arrow buttons in the toolbar or the arrow keys, or click a page in the **Thumbnails** sidebar.
 
-The arrow keys follow the physical side of the page. In **RTL** mode, <kbd>←</kbd> goes to the next page and <kbd>→</kbd> to the previous one, like turning pages in a printed manga. In **LTR** mode it is the other way around.
+The arrow keys follow the physical side of the page. In **RTL** mode, <kbd>←</kbd> goes to the next page and <kbd>→</kbd> to the previous one, like turning pages in a printed manga. In **LTR** mode it is the other way around. In a double-page spread the first page is on the right in RTL (`13 | 12`) and on the left in LTR (`12 | 13`).
 
 ## Supported files
 
@@ -48,7 +50,7 @@ The WASM decoder is single-threaded: a 2160×3072 page takes about 1.3 s to appe
 
 ## Reading progress
 
-The current page is saved in `localStorage` for each book. A book is identified by its file name, size and last-modified time, so a renamed or re-saved file starts again from page 1. Progress is kept only in this browser.
+The current page is saved in `localStorage` for each book (in double mode, the spread's first page). A book is identified by its file name, size and last-modified time, so a renamed or re-saved file starts again from page 1. Progress is kept only in this browser.
 
 ## Development
 
@@ -60,10 +62,10 @@ pnpm dev        # start the dev server
 pnpm typecheck  # TypeScript check
 pnpm build      # typecheck + production build into dist/
 pnpm preview    # serve the production build locally
-pnpm test       # end-to-end tests in Chromium (Playwright)
+pnpm test       # unit tests and end-to-end tests in Chromium (Playwright)
 ```
 
-The tests run twice: in plain Chromium, which uses the WASM decoder, and with Chromium's JPEG XL support turned on (`--enable-features=JXLImageFormat`). They need Playwright's Chromium (`pnpm exec playwright install chromium`). The fixture `tests/fixtures/mixed.cbz` mixes JXL, PNG, JPEG and a corrupt JXL page; `tests/fixtures/make-fixtures.sh` regenerates it.
+The spread functions are unit-tested in Node. The end-to-end tests run twice: in plain Chromium, which uses the WASM decoder, and with Chromium's JPEG XL support turned on (`--enable-features=JXLImageFormat`). They need Playwright's Chromium (`pnpm exec playwright install chromium`). The fixture `tests/fixtures/mixed.cbz` mixes JXL, PNG, JPEG and a corrupt JXL page; `tests/fixtures/make-fixtures.sh` regenerates it.
 
 Stack: React, TypeScript, Vite, Tailwind CSS, [JSZip](https://stuk.github.io/jszip/) and [@jsquash/jxl](https://github.com/jamsinclair/jSquash/tree/main/packages/jxl). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code is organized.
 
