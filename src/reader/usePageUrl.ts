@@ -18,7 +18,7 @@ export function usePageUrl(zip: JSZip, page: Page): { url?: string; error?: stri
     const controller = new AbortController();
     const { signal } = controller;
     readPage(zip, page)
-      .then((blob) => prepareImage(blob, signal))
+      .then((blob) => prepareImage(blob, { signal }))
       .then(
         (blob) => {
           if (!signal.aborted) setLoaded({ page, url: URL.createObjectURL(blob) });
