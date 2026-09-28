@@ -31,7 +31,9 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
   const [preferences, setPreferences] = useState(loadPreferences);
   const { direction, fitMode } = preferences;
   const total = manga.pages.length;
-  const { url, error } = usePageUrl(zip, manga.pages[index]);
+  const page = manga.pages[index];
+  const { url, error } = usePageUrl(zip, page);
+  const [undecodableUrl, setUndecodableUrl] = useState<string>();
   const viewport = useRef<HTMLDivElement>(null);
 
   useEffect(() => savePreferences(preferences), [preferences]);
@@ -118,8 +120,18 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
           <p className="m-auto text-sm text-red-400" role="alert">
             Could not load page {index + 1}: {error}
           </p>
+        ) : url && url === undecodableUrl ? (
+          <p className="m-auto max-w-sm px-4 text-center text-sm text-red-400" role="alert">
+            Page {index + 1} could not be displayed. This browser may not support its image format (
+            {page.path.slice(page.path.lastIndexOf('.'))}).
+          </p>
         ) : url ? (
-          <img src={url} alt={`Page ${index + 1}`} className={`m-auto ${IMAGE_CLASSES[fitMode]}`} />
+          <img
+            src={url}
+            alt={`Page ${index + 1}`}
+            className={`m-auto ${IMAGE_CLASSES[fitMode]}`}
+            onError={() => setUndecodableUrl(url)}
+          />
         ) : (
           <p className="m-auto text-sm text-neutral-500">Loading…</p>
         )}

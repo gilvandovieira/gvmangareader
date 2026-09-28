@@ -8,6 +8,7 @@ const IMAGE_TYPES: Record<string, string> = {
   webp: 'image/webp',
   gif: 'image/gif',
   avif: 'image/avif',
+  jxl: 'image/jxl',
 };
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
