@@ -12,6 +12,7 @@ import {
 } from '../model/manga';
 import { loadPreferences, savePreferences } from '../storage/preferences';
 import { loadProgress, saveProgress } from '../storage/progress';
+import { PageSidebar } from './PageSidebar';
 import { PageView } from './PageView';
 import { leftToRight, spreadAt, stepSpread } from './spreads';
 
@@ -39,7 +40,7 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
   /** A page of the current spread; the spread itself is derived from it and the layout. */
   const [index, setIndex] = useState(() => loadProgress(manga.id, total));
   const [preferences, setPreferences] = useState(loadPreferences);
-  const { direction, fitMode, readingMode, spreadStart } = preferences;
+  const { direction, fitMode, readingMode, spreadStart, sidebarOpen, sidebarPosition } = preferences;
   const spread = spreadAt(index, total, { mode: readingMode, start: spreadStart });
 
   useEffect(() => savePreferences(preferences), [preferences]);
@@ -73,6 +74,15 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-neutral-800 bg-neutral-900 px-3 py-2">
+        <button
+          type="button"
+          className={`${buttonClass} aria-expanded:bg-neutral-700`}
+          aria-expanded={sidebarOpen}
+          aria-controls="page-sidebar"
+          onClick={() => setPreferences((p) => ({ ...p, sidebarOpen: !p.sidebarOpen }))}
+        >
+          Thumbnails
+        </button>
         {actions}
         <h1 className="min-w-0 flex-1 truncate text-sm text-neutral-300" title={manga.title}>
           {manga.title}
@@ -134,12 +144,23 @@ export function Reader({ cbz: { manga, zip }, actions }: Props) {
         />
       </header>
 
-      <PageView
-        zip={zip}
-        pages={leftToRight(spread, direction).map((i) => manga.pages[i])}
-        fitMode={fitMode}
-        direction={direction}
-      />
+      <div className={`flex min-h-0 flex-1 ${sidebarPosition === 'right' ? 'flex-row-reverse' : ''}`}>
+        <PageSidebar
+          zip={zip}
+          pages={manga.pages}
+          current={spread}
+          open={sidebarOpen}
+          position={sidebarPosition}
+          onSelect={setIndex}
+          onMove={(position) => setPreferences((p) => ({ ...p, sidebarPosition: position }))}
+        />
+        <PageView
+          zip={zip}
+          pages={leftToRight(spread, direction).map((i) => manga.pages[i])}
+          fitMode={fitMode}
+          direction={direction}
+        />
+      </div>
     </div>
   );
 }

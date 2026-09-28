@@ -8,8 +8,8 @@ async function openFixture(page: Page) {
 }
 
 /** Waits until page `n` is fully shown and returns the MIME type of the Blob behind the `<img>`. */
-async function expectShown(page: Page, n: number): Promise<string> {
-  await expect(page.getByText(`${n} / 5`)).toBeVisible();
+async function expectShown(page: Page, n: number, total = 5): Promise<string> {
+  await expect(page.getByText(`${n} / ${total}`)).toBeVisible();
   await expect(page.locator('[aria-busy=true]')).toHaveCount(0);
   const image = page.getByRole('img', { name: `Page ${n}` });
   await expect.poll(() => image.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth)).toBe(300);
@@ -179,3 +179,110 @@ test.describe('double-page mode', () => {
     await expect(page.getByRole('button', { name: 'Cover alone' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
+
+test.describe('page sidebar', () => {
+  const sidebar = (page: Page) => page.getByRole('navigation', { name: 'Page thumbnails' });
+  const thumbnail = (page: Page, n: number) => sidebar(page).getByRole('button', { name: `Page ${n}`, exact: true });
+
+  test('lists every page, highlights the current spread and jumps to a clicked page', async ({ page }) => {
+    await openFixture(page);
+    await expect(sidebar(page).getByRole('button', { name: /^Page \d+$/ })).toHaveCount(5);
+    await expect(thumbnail(page, 1)).toHaveAttribute('aria-current', 'page');
+    await expect(thumbnail(page, 1).locator('img')).toBeVisible();
+
+    await thumbnail(page, 3).click();
+    await expectShown(page, 3);
+    await expect(thumbnail(page, 3)).toHaveAttribute('aria-current', 'page');
+    await expect(thumbnail(page, 1)).not.toHaveAttribute('aria-current');
+
+    await page.getByRole('button', { name: 'Double' }).click();
+    await thumbnail(page, 5).click();
+    await expect(page.getByText('4–5 / 5')).toBeVisible();
+    await expect(thumbnail(page, 4)).toHaveAttribute('aria-current', 'page');
+    await expect(thumbnail(page, 5)).toHaveAttribute('aria-current', 'page');
+    await expect(thumbnail(page, 3)).not.toHaveAttribute('aria-current');
+  });
+
+  test('collapses and moves to either side, and remembers both', async ({ page }) => {
+    const toggle = page.getByRole('button', { name: 'Thumbnails' });
+    await openFixture(page);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    await toggle.click();
+    await expect(sidebar(page)).toBeHidden();
+    await openFixture(page);
+    await expect(sidebar(page)).toBeHidden();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await toggle.click();
+    await expect(sidebar(page)).toBeVisible();
+    expect((await sidebar(page).boundingBox())!.x).toBe(0);
+    await sidebar(page).getByRole('button', { name: 'Move to right' }).click();
+    const width = page.viewportSize()!.width;
+    await expect.poll(async () => { const box = (await sidebar(page).boundingBox())!; return box.x + box.width; }).toBe(width);
+
+    await openFixture(page);
+    await expect(sidebar(page)).toBeVisible();
+    await expect(sidebar(page).getByRole('button', { name: 'Move to left' })).toBeVisible();
+  });
+
+  test('loads thumbnails lazily and releases their Blob URLs when the book closes', async ({ page }) => {
+    await page.addInitScript(() => {
+      const live = new Set<string>();
+      Object.assign(window, { liveUrls: live });
+      const create = URL.createObjectURL.bind(URL);
+      const revoke = URL.revokeObjectURL.bind(URL);
+      URL.createObjectURL = (object) => {
+        const url = create(object);
+        live.add(url);
+        return url;
+      };
+      URL.revokeObjectURL = (url) => {
+        live.delete(url);
+        revoke(url);
+      };
+    });
+    const liveUrls = () => page.evaluate(() => [...(window as unknown as { liveUrls: Set<string> }).liveUrls]);
+    const loadedThumbnails = sidebar(page).locator('img');
+
+    await openGeneratedBook(page, 60);
+    await expectShown(page, 1, 60);
+    await expect.poll(() => loadedThumbnails.count()).toBeGreaterThan(2);
+    await page.waitForTimeout(300);
+    expect(await loadedThumbnails.count()).toBeLessThan(15);
+    await expect(thumbnail(page, 60).locator('img')).toHaveCount(0);
+
+    await thumbnail(page, 60).scrollIntoViewIfNeeded();
+    await expect(thumbnail(page, 60).locator('img')).toBeVisible();
+    // Only the small thumbnails and the page on screen hold a Blob URL, never a full-size decode.
+    expect(await liveUrls()).toHaveLength((await loadedThumbnails.count()) + 1);
+
+    const bookUrls = await liveUrls();
+    await page.locator('input[type=file]').setInputFiles(FIXTURE);
+    await expectShown(page, 1);
+    expect((await liveUrls()).filter((url) => bookUrls.includes(url))).toEqual([]);
+  });
+});
+
+/** Builds a CBZ of solid-color PNG pages in the browser and opens it. */
+async function openGeneratedBook(page: Page, pageCount: number) {
+  await page.goto('/');
+  await page.addScriptTag({ url: '/node_modules/jszip/dist/jszip.min.js' });
+  await page.evaluate(async (pageCount) => {
+    type Zip = { file: (name: string, data: Blob) => void; generateAsync: (options: object) => Promise<Blob> };
+    const zip: Zip = new (window as unknown as { JSZip: new () => Zip }).JSZip();
+    const canvas = new OffscreenCanvas(300, 420);
+    const context = canvas.getContext('2d')!;
+    for (let i = 1; i <= pageCount; i++) {
+      context.fillStyle = `hsl(${i * 37} 70% 70%)`;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      zip.file(`${String(i).padStart(3, '0')}.png`, await canvas.convertToBlob());
+    }
+    const file = new File([await zip.generateAsync({ type: 'blob' })], 'generated.cbz');
+    const input = document.querySelector<HTMLInputElement>('input[type=file]')!;
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, pageCount);
+}

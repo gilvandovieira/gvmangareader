@@ -23,3 +23,6 @@ export type ReadingMode = (typeof READING_MODES)[number];
 /** In double mode: whether page 1 is shown alone (like a cover) or paired with page 2. */
 export const SPREAD_STARTS = ['first-alone', 'paired'] as const;
 export type SpreadStart = (typeof SPREAD_STARTS)[number];
+
+export const SIDEBAR_POSITIONS = ['left', 'right'] as const;
+export type SidebarPosition = (typeof SIDEBAR_POSITIONS)[number];

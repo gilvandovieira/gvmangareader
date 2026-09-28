@@ -37,7 +37,7 @@ export function PageView({ zip, pages, fitMode, direction }: Props) {
   }, [spreadKey, direction]);
 
   return (
-    <div ref={viewport} className="flex min-h-0 flex-1 overflow-auto">
+    <div ref={viewport} className="flex min-h-0 min-w-0 flex-1 overflow-auto">
       <div className={`m-auto flex ${SPREAD_CLASSES[fitMode]}`}>
         {pages.map((page, slot) => (
           // Keyed by slot, so each side keeps showing its previous page until the next one is ready.
